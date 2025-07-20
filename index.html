@@ -71,6 +71,7 @@
     <div class="ui">
         <span>Score: <span id="score">0</span></span>
         <span style="margin-left: 20px;">High Score: <span id="highScore">0</span></span>
+        <span style="margin-left: 20px;">Mode: <span id="currentMode">Normal</span></span>
     </div>
 
     <canvas id="gameCanvas" width="400" height="600"></canvas>
@@ -78,11 +79,19 @@
     <div class="instructions">
         Press SPACEBAR, CLICK, or TAP to flap
     </div>
+    <div style="margin: 10px 0;">
+        <button onclick="toggleMode()">Toggle Mode (Normal/Cheating)</button>
+    </div>
 
     <div class="game-over" id="gameOver">
         <h2>Game Over!</h2>
         <p>Final Score: <span id="finalScore">0</span></p>
         <p>High Score: <span id="finalHighScore">0</span></p>
+        <div class="win-screen" id="winScreen" style="display: none;">
+            <h2>🎉 YOU WIN! 🎉</h2>
+            <p>Congratulations! You reached 60 points!</p>
+            <canvas id="fireworksCanvas" width="300" height="200"></canvas>
+        </div>
         <button onclick="restartGame()">Play Again</button>
     </div>
 </div>
@@ -96,6 +105,10 @@
     let score = 0;
     let highScore = localStorage.getItem('flappyHighScore') || 0;
     document.getElementById('highScore').textContent = highScore;
+
+    let gameMode = 'normal'; // 'normal' or 'cheating'
+    let isWinning = false;
+    let fireworks = [];
 
     // Bird properties
     const bird = {
@@ -201,8 +214,30 @@
         bird.y += bird.velocity;
 
         // Check boundaries
-        if (bird.y < 0 || bird.y + bird.height > canvas.height) {
+        // Check boundaries
+        if (bird.y + bird.height > canvas.height) {
             gameOver();
+        }
+
+        // In cheating mode, only allow going above if bird is already above the pipe zone
+        if (gameMode === 'cheating') {
+            // If bird is in the "cheating zone" (above where pipes can be), allow free movement
+            if (bird.y < 50) {
+                // Allow going above screen
+                if (bird.y < -bird.height) {
+                    bird.y = -bird.height + 10;
+                }
+            } else {
+                // If bird goes below cheating zone, act like normal mode for top boundary
+                if (bird.y < 0) {
+                    gameOver();
+                }
+            }
+        } else {
+            // Normal mode: die if hit top
+            if (bird.y < 0) {
+                gameOver();
+            }
         }
     }
 
@@ -235,10 +270,28 @@
             // Collision detection
             if (bird.x < pipe.x + pipeWidth &&
                 bird.x + bird.width > pipe.x) {
-                if (bird.y < pipe.topHeight ||
-                    bird.y + bird.height > pipe.bottomY) {
-                    gameOver();
+
+                if (gameMode === 'normal') {
+                    // Normal mode: always check collisions
+                    if (bird.y < pipe.topHeight ||
+                        bird.y + bird.height > pipe.bottomY) {
+                        gameOver();
+                    }
+                } else {
+                    // Cheating mode: only check collisions if bird is not in cheating zone
+                    if (bird.y >= 50) { // Bird is below cheating zone
+                        if (bird.y < pipe.topHeight ||
+                            bird.y + bird.height > pipe.bottomY) {
+                            gameOver();
+                        }
+                    }
+                    // If bird.y < 50, it's in cheating zone and can pass through pipes
                 }
+            }
+
+            // Check for win condition
+            if (score >= 60) {
+                winGame();
             }
         }
     }
@@ -261,6 +314,75 @@
         document.getElementById('gameOver').style.display = 'block';
     }
 
+    function winGame() {
+        if (isWinning) return;
+
+        isWinning = true;
+        gameState = 'won';
+
+        // Show win screen
+        document.getElementById('winScreen').style.display = 'block';
+        document.getElementById('gameOver').style.display = 'block';
+
+        // Start fireworks
+        startFireworks();
+    }
+
+    function toggleMode() {
+        gameMode = gameMode === 'normal' ? 'cheating' : 'normal';
+        document.getElementById('currentMode').textContent =
+            gameMode === 'normal' ? 'Normal' : 'Cheating';
+    }
+
+    function startFireworks() {
+        const fireworksCanvas = document.getElementById('fireworksCanvas');
+        const fCtx = fireworksCanvas.getContext('2d');
+
+        // Create firework particles
+        for(let i = 0; i < 5; i++) {
+            setTimeout(() => {
+                createFirework(fCtx, fireworksCanvas);
+            }, i * 300);
+        }
+    }
+
+    function createFirework(fCtx, fCanvas) {
+        const centerX = Math.random() * fCanvas.width;
+        const centerY = Math.random() * fCanvas.height;
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
+
+        for(let i = 0; i < 20; i++) {
+            const particle = {
+                x: centerX,
+                y: centerY,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                life: 60
+            };
+
+            animateFireworkParticle(fCtx, particle);
+        }
+    }
+
+    function animateFireworkParticle(fCtx, particle) {
+        const animate = () => {
+            if(particle.life <= 0) return;
+
+            fCtx.globalAlpha = particle.life / 60;
+            fCtx.fillStyle = particle.color;
+            fCtx.fillRect(particle.x, particle.y, 3, 3);
+
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.vy += 0.2; // gravity
+            particle.life--;
+
+            requestAnimationFrame(animate);
+        };
+        animate();
+    }
+
     function restartGame() {
         gameState = 'playing';
         score = 0;
@@ -272,6 +394,8 @@
         document.getElementById('score').textContent = score;
         document.getElementById('highScore').textContent = highScore;
         document.getElementById('gameOver').style.display = 'none';
+        isWinning = false;
+        document.getElementById('winScreen').style.display = 'none';
     }
 
     // Drawing functions
